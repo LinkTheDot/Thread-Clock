@@ -1,0 +1,64 @@
+#![allow(unused)]
+
+use anyhow::anyhow;
+use std::thread;
+use std::time::Duration;
+use tokio::runtime::Runtime;
+use tokio::sync::{
+  broadcast,
+  broadcast::{error::RecvError, Receiver, Sender},
+};
+use tokio::task::JoinError;
+use tokio::task::JoinHandle;
+
+pub const DEFAULT_TICKRATE: u32 = 24;
+
+pub type Time = u32;
+pub type ClockError = String;
+
+struct MainClock {
+  tokio_runtime: Runtime,
+  clock_handle: Option<JoinHandle<()>>,
+  time_receiver: Receiver<Time>,
+  clock_sender: Sender<Time>,
+  tick_rate: u32,
+}
+
+impl MainClock {
+  pub fn new() -> anyhow::Result<Self> {
+    let tokio_runtime = Runtime::new()?;
+    let clock_handle = None;
+    let (clock_sender, time_receiver) = broadcast::channel::<u32>(1);
+    let tick_rate = DEFAULT_TICKRATE;
+
+    Ok(MainClock {
+      tokio_runtime,
+      clock_handle,
+      time_receiver,
+      clock_sender,
+      tick_rate,
+    })
+  }
+
+  pub fn start(&mut self) {
+
+  }
+
+  fn add_clock_handle(&mut self, handle: JoinHandle<()>) {
+    self.clock_handle = Some(handle)
+  }
+
+  async fn create_clock_thread(&mut self) {
+    let time_sender = self.clock_sender.clone();
+    let tick_rate = self.tick_rate;
+
+    let mut time = 0;
+
+    let handle = self.runtime.spawn(async move {
+      loop {
+        thread::sleep(Duration::from_millis(tick_rate));
+      }
+    });
+  }
+}
+
