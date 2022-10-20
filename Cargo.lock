@@ -64,7 +64,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-clock"
+name = "rust_clock"
 version = "0.1.0"
 dependencies = [
  "anyhow",
