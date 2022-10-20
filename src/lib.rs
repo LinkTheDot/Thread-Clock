@@ -1,23 +1,48 @@
-// #![allow(unused)]
-
-use anyhow::anyhow;
-use std::thread;
-use std::time::Duration;
+use anyhow::Context;
+use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{
   broadcast,
   broadcast::{Receiver, Sender},
 };
+use tokio::sync::{
+  oneshot,
+  oneshot::{Receiver as OneReceiver, Sender as OneSender},
+};
 use tokio::task::JoinHandle;
-use tokio::sync::{oneshot, oneshot::{Sender as OneSender, Receiver as OneReceiver}};
+use tokio::time::Duration;
 
 pub const DEFAULT_TICKRATE: u32 = 24;
 
 pub type Time = u32;
-pub type ClockError = String;
 
-pub struct MainClock {
-  runtime: Runtime,
+#[derive(Debug)]
+pub struct TimeReceiver {
+  runtime: Arc<Runtime>,
+  time_receiver: Receiver<Time>,
+}
+
+impl TimeReceiver {
+  pub fn time(&mut self) -> Time {
+    Clock::get_time(&self.runtime, &mut self.time_receiver)
+  }
+
+  pub fn wait_for_tick(&mut self) {
+    Clock::get_time(&self.runtime, &mut self.time_receiver);
+  }
+
+  pub fn wait_for_x_ticks(&mut self, x: u32) {
+    Clock::wait_for_ticks(&self.runtime, &mut self.time_receiver, x);
+  }
+
+  pub fn wait_for_time(&mut self, time: Time) {
+    Clock::wait_until(&self.runtime, &mut self.time_receiver, time);
+  }
+}
+
+#[derive(Debug)]
+pub struct Clock {
+  runtime: Arc<Runtime>,
   clock_handle: Option<JoinHandle<()>>,
   clock_stopper: Option<OneSender<()>>,
   time_receiver: Receiver<Time>,
@@ -25,15 +50,26 @@ pub struct MainClock {
   tick_rate: u32,
 }
 
-impl MainClock {
+impl Clock {
   pub fn new() -> anyhow::Result<Self> {
-    let runtime = Runtime::new()?;
+    Clock::new_clock(None)
+  }
+
+  pub fn custom(tick_rate: u32) -> anyhow::Result<Self> {
+    Clock::new_clock(Some(tick_rate))
+  }
+
+  fn new_clock(tick_rate: Option<u32>) -> anyhow::Result<Self> {
+    let runtime = Arc::new(Runtime::new()?);
     let clock_handle = None;
     let clock_stopper = None;
     let (clock_sender, time_receiver) = broadcast::channel::<u32>(1);
-    let tick_rate = DEFAULT_TICKRATE;
+    let tick_rate = match tick_rate {
+      Some(tick_rate) => tick_rate,
+      None => DEFAULT_TICKRATE,
+    };
 
-    Ok(MainClock {
+    Ok(Clock {
       runtime,
       clock_handle,
       clock_stopper,
@@ -52,18 +88,62 @@ impl MainClock {
   }
 
   pub fn stop(mut self) -> anyhow::Result<Time> {
-    let time = self.get_time();
+    let time = Self::get_time(&self.runtime, &mut self.time_receiver);
 
-    let _ = self.clock_stopper.ok_or_else(|| anyhow!("The clock hasn't started."))?.send(());
+    let _ = self
+      .clock_stopper
+      .context("The clock hasn't started.")?
+      .send(());
 
     Ok(time)
   }
 
-  pub fn get_time(&mut self) -> Time {
-    self.runtime.block_on(self.time_receiver.recv()).unwrap()
-
-
+  pub fn time(&mut self) -> Time {
+    Self::get_time(&self.runtime, &mut self.time_receiver)
   }
+
+  pub fn wait_for_tick(&mut self) {
+    Self::get_time(&self.runtime, &mut self.time_receiver);
+  }
+
+  pub fn wait_for_x_ticks(&mut self, x: u32) {
+    Self::wait_for_ticks(&self.runtime, &mut self.time_receiver, x);
+  }
+
+  pub fn wait_for_time(&mut self, time: Time) {
+    Self::wait_until(&self.runtime, &mut self.time_receiver, time);
+  }
+
+  pub fn spawn_receiver(&self) -> TimeReceiver {
+    TimeReceiver {
+      runtime: Arc::clone(&self.runtime),
+      time_receiver: self.clock_sender.subscribe(),
+    }
+  }
+
+  // split
+
+  fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
+    runtime.block_on(time_receiver.recv()).unwrap()
+  }
+
+  fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
+    for _ in 0..x {
+      Self::get_time(runtime, time_receiver);
+    }
+  }
+
+  fn wait_until(runtime: &Runtime, time_receiver: &mut Receiver<Time>, wait_for_time: Time) {
+    let current_time = Clock::get_time(runtime, time_receiver);
+
+    if current_time < wait_for_time {
+      let time_to_wait = wait_for_time - current_time;
+
+      Self::wait_for_ticks(runtime, time_receiver, time_to_wait);
+    }
+  }
+
+  // split
 
   fn create_clock_thread(&self, mut stopper_receiver: OneReceiver<()>) -> JoinHandle<()> {
     let time_sender = self.clock_sender.clone();
@@ -73,7 +153,7 @@ impl MainClock {
 
     self.runtime.spawn(async move {
       while stopper_receiver.try_recv().is_err() {
-        thread::sleep(Duration::from_millis(tick_rate));
+        tokio::time::sleep(Duration::from_millis(tick_rate)).await;
 
         let _ = time_sender.send(time);
 
@@ -82,4 +162,3 @@ impl MainClock {
     })
   }
 }
-

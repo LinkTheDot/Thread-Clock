@@ -1,31 +1,72 @@
-#![allow(unused)]
+#![allow(dead_code)]
 
-use rust_clock::MainClock;
+use rust_clock::Clock;
+use std::thread;
+
+struct Test {}
 
 fn main() {
-  run_clock();
+  Test::run_clock();
+
+  Test::waiting_for_time();
 }
 
-fn run_clock() {
-  let mut clock = MainClock::new().unwrap();
+impl Test {
+  fn run_clock() {
+    let mut clock = Clock::new().unwrap();
 
-  clock.start();
+    clock.start();
 
-  let mut previous_time = 0;
-  clock.get_time();
+    let mut previous_time = 0;
+    clock.time();
 
-  for _ in 0..100 {
-    let time = clock.get_time();
+    let mut clock_receiver = clock.spawn_receiver();
 
-    assert!(time == previous_time + 1);
+    let handle = thread::spawn(move || {
+      for _ in 1..100 {
+        println!("Time in other thread is: {}", clock_receiver.time());
+      }
+    });
 
-    println!("The time is: '{}'", time);
+    for _ in 0..100 {
+      let time = clock.time();
 
-    previous_time = time;
+      assert!(time == previous_time + 1);
+
+      println!("Time in main thread is : {}", time);
+
+      previous_time = time;
+    }
+
+    let final_time = clock.stop().unwrap();
+
+    println!();
+    println!("The final time is: {}", final_time);
+
+    let _ = handle.join();
   }
 
-  let final_time = clock.stop().unwrap();
+  fn waiting_for_time() {
+    let mut clock = Clock::new().unwrap();
 
-  println!();
-  println!("The final time is: '{}'", final_time);
+    clock.start();
+
+    let mut clock_receiver = clock.spawn_receiver();
+
+    let handle = thread::spawn(move || {
+      clock_receiver.wait_for_time(100);
+
+      println!("Time is up in the handle");
+    });
+
+    for _ in 0..100 {
+      let time = clock.time();
+
+      println!("The time in {time}");
+    }
+
+    let _ = handle.join();
+
+    let _ = clock.stop();
+  }
 }
