@@ -121,10 +121,12 @@ impl Clock {
     }
   }
 
-  // split
+  // shared function split
 
   fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
-    runtime.block_on(time_receiver.recv()).unwrap()
+    runtime
+      .block_on(time_receiver.recv())
+      .unwrap_or_else(|error| panic!("There was an error getting the time: '{error}'"))
   }
 
   fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
@@ -143,7 +145,7 @@ impl Clock {
     }
   }
 
-  // split
+  // shared function split
 
   fn create_clock_thread(&self, mut stopper_receiver: OneReceiver<()>) -> JoinHandle<()> {
     let time_sender = self.clock_sender.clone();
@@ -161,4 +163,25 @@ impl Clock {
       }
     })
   }
+}
+
+#[test]
+fn clock_wait_for_x_ticks_logic() {
+  let mut clock =
+      Clock::custom(1) // 1ms tickrate to make the test go faster
+        .unwrap_or_else(|error| {
+          panic!("An error has occurred while creating the clock: '{error}'")
+        });
+
+  let expected_final_time = 10;
+
+  clock.start();
+
+  clock.wait_for_x_ticks(10);
+
+  let final_time = clock
+    .stop()
+    .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
+
+  assert_eq!(final_time, expected_final_time);
 }
