@@ -35,7 +35,7 @@ mod clock {
 
   #[test]
   fn wait_for_x_ticks_logic() {
-    let mut clock = Clock::custom(1)
+    let mut clock = Clock::new()
       .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
     let expected_final_time = 10;
 
@@ -97,22 +97,22 @@ mod time_receiver {
   fn time_receiver_methods() {
     let mut clock = Clock::custom(1)
       .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
+    let expected_final_time = 18;
 
     clock.start();
 
     let mut time_receiver = clock.spawn_receiver();
 
-    time_receiver.time();
-    time_receiver.wait_for_x_ticks(5);
-    time_receiver.wait_for_time(10);
-    let time = time_receiver.time();
-
-    clock.time();
+    time_receiver.wait_for_time(10); // time = 10
+    time_receiver.time(); // time = 11
+    time_receiver.wait_for_tick(); // time = 12
+    time_receiver.wait_for_x_ticks(5); // time = 17
+    time_receiver.time(); // time = 18
 
     let final_time = clock
       .stop()
       .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
 
-    assert_eq!(time + 1, final_time);
+    assert_eq!(expected_final_time, final_time);
   }
 }
