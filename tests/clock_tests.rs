@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use rust_clock::Clock;
 use std::thread;
 
