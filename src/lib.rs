@@ -180,24 +180,3 @@ impl Clock {
     })
   }
 }
-
-#[test]
-fn clock_wait_for_x_ticks_logic() {
-  let mut clock =
-      Clock::custom(1)
-        .unwrap_or_else(|error| {
-          panic!("An error has occurred while creating the clock: '{error}'")
-        });
-
-  let expected_final_time = 10;
-
-  clock.start();
-
-  clock.wait_for_x_ticks(10);
-
-  let final_time = clock
-    .stop()
-    .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
-
-  assert_eq!(final_time, expected_final_time);
-}
