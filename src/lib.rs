@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::anyhow;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{
@@ -88,14 +88,17 @@ impl Clock {
   }
 
   pub fn stop(mut self) -> anyhow::Result<Time> {
-    let time = Self::get_time(&self.runtime, &mut self.time_receiver);
+    match self.clock_stopper {
+      Some(clock_stopper) => {
+        let time = Self::get_time(&self.runtime, &mut self.time_receiver);
 
-    let _ = self
-      .clock_stopper
-      .context("The clock hasn't started.")?
-      .send(());
+        let _ = clock_stopper.send(());
 
-    Ok(time)
+        Ok(time)
+      }
+
+      None => Err(anyhow!("The clock hasn't started.")),
+    }
   }
 
   pub fn time(&mut self) -> Time {
@@ -121,20 +124,37 @@ impl Clock {
     }
   }
 
+  fn create_clock_thread(&self, mut stopper_receiver: OneReceiver<()>) -> JoinHandle<()> {
+    let time_sender = self.clock_sender.clone();
+    let tick_rate = self.tick_rate.into();
+
+    self.runtime.spawn(async move {
+      let mut time = 0;
+
+      while stopper_receiver.try_recv().is_err() {
+        tokio::time::sleep(Duration::from_millis(tick_rate)).await;
+
+        let _ = time_sender.send(time);
+
+        time += 1;
+      }
+    })
+  }
+
   // shared function split
 
   fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
+    let channel_was_empty = time_receiver.is_empty();
     let time = runtime.block_on(time_receiver.recv());
 
-    if let Ok(time) = time {
+    if let (Ok(time), true) = (time, channel_was_empty) {
       time
+    } else if !time_receiver.is_empty() {
+      let _ = runtime.block_on(time_receiver.recv()); // clear excess data
+
+      runtime.block_on(time_receiver.recv()).unwrap()
     } else {
-      loop {
-        match runtime.block_on(time_receiver.recv()) {
-          Ok(time) => return time,
-          Err(_) => continue,
-        }
-      }
+      runtime.block_on(time_receiver.recv()).unwrap()
     }
   }
 
@@ -153,44 +173,4 @@ impl Clock {
       Self::wait_for_ticks(runtime, time_receiver, time_to_wait);
     }
   }
-
-  // shared function split
-
-  fn create_clock_thread(&self, mut stopper_receiver: OneReceiver<()>) -> JoinHandle<()> {
-    let time_sender = self.clock_sender.clone();
-    let tick_rate = self.tick_rate.into();
-
-    self.runtime.spawn(async move {
-      let mut time = 0;
-
-      while stopper_receiver.try_recv().is_err() {
-        tokio::time::sleep(Duration::from_millis(tick_rate)).await;
-
-        let _ = time_sender.send(time);
-
-        time += 1;
-      }
-    })
-  }
-}
-
-#[test]
-fn clock_wait_for_x_ticks_logic() {
-  let mut clock =
-      Clock::custom(1) // 1ms tickrate to make the test go faster
-        .unwrap_or_else(|error| {
-          panic!("An error has occurred while creating the clock: '{error}'")
-        });
-
-  let expected_final_time = 10;
-
-  clock.start();
-
-  clock.wait_for_x_ticks(10);
-
-  let final_time = clock
-    .stop()
-    .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
-
-  assert_eq!(final_time, expected_final_time);
 }
