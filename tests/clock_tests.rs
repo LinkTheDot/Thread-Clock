@@ -74,6 +74,26 @@ mod clock {
 
     assert!(final_time.is_err());
   }
+
+  #[test]
+  fn filled_channel_no_lagged_error() {
+    let mut clock = Clock::custom(1)
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
+
+    let expected_final_time = 1;
+
+    clock.start();
+
+    let mut time_receiver = clock.spawn_receiver();
+
+    time_receiver.wait_for_tick();
+
+    let final_time = clock
+      .stop()
+      .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
+
+    assert_eq!(expected_final_time, final_time);
+  }
 }
 
 #[cfg(test)]

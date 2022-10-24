@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context};
+use anyhow::anyhow;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{
@@ -88,17 +88,16 @@ impl Clock {
   }
 
   pub fn stop(mut self) -> anyhow::Result<Time> {
-    if self.clock_stopper.is_some() {
-      let time = Self::get_time(&self.runtime, &mut self.time_receiver);
+    match self.clock_stopper {
+      Some(clock_stopper) => {
+        let time = Self::get_time(&self.runtime, &mut self.time_receiver);
 
-      let _ = self
-        .clock_stopper
-        .context("The clock hasn't started.")?
-        .send(());
+        let _ = clock_stopper.send(());
 
-      Ok(time)
-    } else {
-      Err(anyhow!("The clock hasn't started."))
+        Ok(time)
+      }
+
+      None => Err(anyhow!("The clock hasn't started.")),
     }
   }
 
@@ -125,44 +124,6 @@ impl Clock {
     }
   }
 
-  // shared function split
-
-  fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
-    let channel_was_empty = time_receiver.is_empty();
-    let time = runtime.block_on(time_receiver.recv());
-
-    if let (Ok(time), true) = (time, channel_was_empty) {
-      time
-    } else if time_receiver.is_empty() {
-      runtime.block_on(time_receiver.recv()).unwrap()
-    } else if !time_receiver.is_empty() {
-      let _ = runtime.block_on(time_receiver.recv()); // clear excess data
-
-      runtime.block_on(time_receiver.recv()).unwrap()
-    } else {
-      runtime.block_on(time_receiver.recv()).unwrap()
-    }
-  }
-
-
-  fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
-    for _ in 0..x {
-      Self::get_time(runtime, time_receiver);
-    }
-  }
-
-  fn wait_until(runtime: &Runtime, time_receiver: &mut Receiver<Time>, wait_for_time: Time) {
-    let current_time = Clock::get_time(runtime, time_receiver);
-
-    if current_time < wait_for_time {
-      let time_to_wait = wait_for_time - current_time;
-
-      Self::wait_for_ticks(runtime, time_receiver, time_to_wait);
-    }
-  }
-
-  // shared function split
-
   fn create_clock_thread(&self, mut stopper_receiver: OneReceiver<()>) -> JoinHandle<()> {
     let time_sender = self.clock_sender.clone();
     let tick_rate = self.tick_rate.into();
@@ -178,5 +139,38 @@ impl Clock {
         time += 1;
       }
     })
+  }
+
+  // shared function split
+
+  fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
+    let channel_was_empty = time_receiver.is_empty();
+    let time = runtime.block_on(time_receiver.recv());
+
+    if let (Ok(time), true) = (time, channel_was_empty) {
+      time
+    } else if !time_receiver.is_empty() {
+      let _ = runtime.block_on(time_receiver.recv()); // clear excess data
+
+      runtime.block_on(time_receiver.recv()).unwrap()
+    } else {
+      runtime.block_on(time_receiver.recv()).unwrap()
+    }
+  }
+
+  fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
+    for _ in 0..x {
+      Self::get_time(runtime, time_receiver);
+    }
+  }
+
+  fn wait_until(runtime: &Runtime, time_receiver: &mut Receiver<Time>, wait_for_time: Time) {
+    let current_time = Clock::get_time(runtime, time_receiver);
+
+    if current_time < wait_for_time {
+      let time_to_wait = wait_for_time - current_time;
+
+      Self::wait_for_ticks(runtime, time_receiver, time_to_wait);
+    }
   }
 }
