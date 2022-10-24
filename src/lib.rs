@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::{
@@ -88,14 +88,18 @@ impl Clock {
   }
 
   pub fn stop(mut self) -> anyhow::Result<Time> {
-    let time = Self::get_time(&self.runtime, &mut self.time_receiver);
+    if self.clock_stopper.is_some() {
+      let time = Self::get_time(&self.runtime, &mut self.time_receiver);
 
-    let _ = self
-      .clock_stopper
-      .context("The clock hasn't started.")?
-      .send(());
+      let _ = self
+        .clock_stopper
+        .context("The clock hasn't started.")?
+        .send(());
 
-    Ok(time)
+      Ok(time)
+    } else {
+      Err(anyhow!("The clock hasn't started."))
+    }
   }
 
   pub fn time(&mut self) -> Time {
@@ -124,19 +128,22 @@ impl Clock {
   // shared function split
 
   fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
+    let channel_was_empty = time_receiver.is_empty();
     let time = runtime.block_on(time_receiver.recv());
 
-    if let Ok(time) = time {
+    if let (Ok(time), true) = (time, channel_was_empty) {
       time
+    } else if time_receiver.is_empty() {
+      runtime.block_on(time_receiver.recv()).unwrap()
+    } else if !time_receiver.is_empty() {
+      let _ = runtime.block_on(time_receiver.recv()); // clear excess data
+
+      runtime.block_on(time_receiver.recv()).unwrap()
     } else {
-      loop {
-        match runtime.block_on(time_receiver.recv()) {
-          Ok(time) => return time,
-          Err(_) => continue,
-        }
-      }
+      runtime.block_on(time_receiver.recv()).unwrap()
     }
   }
+
 
   fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
     for _ in 0..x {
@@ -177,7 +184,7 @@ impl Clock {
 #[test]
 fn clock_wait_for_x_ticks_logic() {
   let mut clock =
-      Clock::custom(1) // 1ms tickrate to make the test go faster
+      Clock::custom(1)
         .unwrap_or_else(|error| {
           panic!("An error has occurred while creating the clock: '{error}'")
         });

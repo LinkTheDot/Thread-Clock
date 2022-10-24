@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use rust_clock::Clock;
 use std::thread;
 
@@ -48,6 +49,32 @@ mod clock {
 
     assert_eq!(expected_final_time, final_time);
   }
+
+  #[test]
+  fn wait_for_time_logic() {
+    let mut clock = Clock::custom(1)
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
+    let expected_final_time = 11;
+
+    clock.start();
+    clock.wait_for_time(10);
+
+    let final_time = clock
+      .stop()
+      .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
+
+    assert_eq!(expected_final_time, final_time);
+  }
+
+  #[test]
+  fn stop_clock_before_starting() {
+    let clock = Clock::new()
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
+
+    let final_time = clock.stop();
+
+    assert!(final_time.is_err());
+  }
 }
 
 #[cfg(test)]
@@ -97,7 +124,7 @@ mod time_receiver {
   fn time_receiver_methods() {
     let mut clock = Clock::custom(1)
       .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
-    let expected_final_time = 18;
+    let expected_final_time = 19;
 
     clock.start();
 
@@ -110,7 +137,7 @@ mod time_receiver {
     time_receiver.time(); // time = 18
 
     let final_time = clock
-      .stop()
+      .stop() // time = 19
       .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
 
     assert_eq!(expected_final_time, final_time);
