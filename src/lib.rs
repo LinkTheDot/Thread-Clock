@@ -124,9 +124,18 @@ impl Clock {
   // shared function split
 
   fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
-    runtime
-      .block_on(time_receiver.recv())
-      .unwrap_or_else(|error| panic!("There was an error getting the time: '{error}'"))
+    let time = runtime.block_on(time_receiver.recv());
+
+    if let Ok(time) = time {
+      time
+    } else {
+      loop {
+        match runtime.block_on(time_receiver.recv()) {
+          Ok(time) => return time,
+          Err(_) => continue,
+        }
+      }
+    }
   }
 
   fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
@@ -151,9 +160,9 @@ impl Clock {
     let time_sender = self.clock_sender.clone();
     let tick_rate = self.tick_rate.into();
 
-    let mut time = 0;
-
     self.runtime.spawn(async move {
+      let mut time = 0;
+
       while stopper_receiver.try_recv().is_err() {
         tokio::time::sleep(Duration::from_millis(tick_rate)).await;
 
