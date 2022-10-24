@@ -7,20 +7,19 @@ mod clock {
 
   #[test]
   fn counting_works() {
-    let mut clock =
-      Clock::custom(1) // 1ms tickrate to make the test go faster
-        .unwrap_or_else(|error| {
-          panic!("An error has occurred while creating the clock: '{error}'")
-        });
-    let mut previous_time = 0;
-
+    let mut clock = Clock::custom(1)
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
     let expected_final_time = 1001;
 
     clock.start();
-    clock.wait_for_tick(); // waits a tick so the time will be 1
+
+    let mut previous_time = 0;
+    clock.wait_for_tick();
 
     for _ in 0..1000 {
       let time = clock.time();
+
+      println!("The time is {time}");
 
       assert!(time == previous_time + 1);
 
@@ -31,16 +30,13 @@ mod clock {
       .stop()
       .unwrap_or_else(|error| panic!("An error has occurred while stopping the clock: '{error}'"));
 
-    assert_eq!(expected_final_time, final_time);
+    assert_eq!(final_time, expected_final_time);
   }
 
   #[test]
   fn wait_for_x_ticks_logic() {
-    let mut clock =
-      Clock::custom(1) // 1ms tickrate to make the test go faster
-        .unwrap_or_else(|error| {
-          panic!("An error has occurred while creating the clock: '{error}'")
-        });
+    let mut clock = Clock::custom(1)
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
     let expected_final_time = 10;
 
     clock.start();
@@ -60,11 +56,8 @@ mod time_receiver {
 
   #[test]
   fn time_receiver_works() {
-    let mut clock =
-      Clock::custom(1) // 1ms tickrate to make the test go faster
-        .unwrap_or_else(|error| {
-          panic!("An error has occurred while creating the clock: '{error}'")
-        });
+    let mut clock = Clock::custom(1)
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
 
     let expected_final_time = 1001;
     let mut previous_time = 0;
@@ -101,27 +94,20 @@ mod time_receiver {
   }
 
   #[test]
-  #[ignore]
-  // When adding to a broadcast channel that's full, you will get an error
-  // on the receiver's side
   fn time_receiver_methods() {
-    let mut clock =
-      Clock::custom(1) // 1ms tickrate to make the test go faster
-        .unwrap_or_else(|error| {
-          panic!("An error has occurred while creating the clock: '{error}'")
-        });
+    let mut clock = Clock::custom(1)
+      .unwrap_or_else(|error| panic!("An error has occurred while creating the clock: '{error}'"));
 
     clock.start();
 
     let mut time_receiver = clock.spawn_receiver();
 
     time_receiver.time();
-    // time_receiver.wait_for_x_ticks(5);
-    // time_receiver.wait_for_time(10);
+    time_receiver.wait_for_x_ticks(5);
+    time_receiver.wait_for_time(10);
     let time = time_receiver.time();
 
-    // clock.time();
-    // let time = clock.time();
+    clock.time();
 
     let final_time = clock
       .stop()
