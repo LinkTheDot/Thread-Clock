@@ -1,7 +1,11 @@
 [package]
 name = "rust_clock"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/LinkTheDot/Rust-Clock"
 version = "0.1.0"
 edition = "2021"
+description = "A crate that can be used to synchronize and delay actions between threads"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
