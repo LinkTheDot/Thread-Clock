@@ -64,14 +64,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust_clock"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tokio",
-]
-
-[[package]]
 name = "syn"
 version = "1.0.102"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -80,6 +72,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "thread_clock"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tokio",
 ]
 
 [[package]]

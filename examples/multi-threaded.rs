@@ -1,5 +1,5 @@
-use rust_clock::Clock;
 use std::thread;
+use thread_clock::Clock;
 
 fn main() {
   let mut clock = Clock::new().unwrap();

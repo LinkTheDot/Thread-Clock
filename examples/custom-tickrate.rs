@@ -1,4 +1,4 @@
-use rust_clock::Clock;
+use thread_clock::Clock;
 
 fn main() {
   // starts a clock with a tick_rate of 250ms

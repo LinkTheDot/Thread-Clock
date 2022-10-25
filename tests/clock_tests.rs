@@ -1,5 +1,5 @@
-use rust_clock::Clock;
 use std::thread;
+use thread_clock::Clock;
 
 #[cfg(test)]
 mod clock {

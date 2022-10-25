@@ -29,7 +29,7 @@ pub type Time = u64;
 ///
 /// # Creation
 /// ```
-///use rust_clock::Clock;
+///use thread_clock::Clock;
 ///use std::thread;
 ///
 ///let mut clock = Clock::new().unwrap();
@@ -55,7 +55,7 @@ impl TimeReceiver {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -75,7 +75,7 @@ impl TimeReceiver {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -97,7 +97,7 @@ impl TimeReceiver {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -121,7 +121,7 @@ impl TimeReceiver {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -149,7 +149,7 @@ impl TimeReceiver {
 ///# Usage
 ///
 ///```
-///use rust_clock::Clock;
+///use thread_clock::Clock;
 ///
 ///let mut clock = Clock::new().unwrap();
 ///
@@ -178,7 +178,7 @@ impl Clock {
   ///Counting doesn't start until you call [`clock.start()`](crate::Clock::start()) on the clock.
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///
@@ -193,7 +193,7 @@ impl Clock {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::custom(10).unwrap();
   ///```
@@ -226,7 +226,7 @@ impl Clock {
   ///
   ///# Example
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///
@@ -246,7 +246,7 @@ impl Clock {
   ///
   ///# Example
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -274,7 +274,7 @@ impl Clock {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -292,7 +292,7 @@ impl Clock {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -312,7 +312,7 @@ impl Clock {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
@@ -334,7 +334,7 @@ impl Clock {
   ///# Example
   ///
   ///```
-  ///use rust_clock::Clock;
+  ///use thread_clock::Clock;
   ///
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();

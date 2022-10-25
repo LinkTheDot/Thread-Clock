@@ -1,9 +1,9 @@
 [package]
-name = "rust_clock"
+name = "thread_clock"
 license = "MIT"
 authors = ["Link <CirnoStrongest9909@hotmail.com>"]
 readme = "README.md"
-repository = "https://github.com/LinkTheDot/Rust-Clock"
+repository = "https://github.com/LinkTheDot/Thread-Clock"
 version = "0.1.0"
 edition = "2021"
 description = "A crate that can be used to synchronize and delay actions between threads"
