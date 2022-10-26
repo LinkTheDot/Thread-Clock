@@ -102,6 +102,33 @@ mod clock {
 
     assert_eq!(expected_final_time, final_time);
   }
+
+  #[test]
+  fn clock_not_started_errors() {
+    let mut clock = Clock::new().unwrap();
+
+    let safe_time_error = clock.safe_time();
+    let wait_for_tick_error = clock.wait_for_tick();
+    let wait_for_time_error = clock.wait_for_time(5);
+    let wait_for_x_ticks_error = clock.wait_for_x_ticks(5);
+
+    assert!(safe_time_error.is_err());
+    assert!(wait_for_tick_error.is_err());
+    assert!(wait_for_time_error.is_err());
+    assert!(wait_for_x_ticks_error.is_err());
+  }
+
+  #[test]
+  fn time_has_already_occurred_error() {
+    let mut clock = Clock::custom(1).unwrap();
+    clock.start();
+
+    let wait_x_ticks = clock.wait_for_x_ticks(5);
+    let wait_for_time_error = clock.wait_for_time(3);
+
+    assert!(wait_x_ticks.is_ok());
+    assert!(wait_for_time_error.is_err());
+  }
 }
 
 #[cfg(test)]
@@ -178,5 +205,36 @@ mod time_receiver {
     }
 
     assert_eq!(expected_final_time, final_time);
+  }
+
+  #[test]
+  fn clock_not_started_errors() {
+    let clock = Clock::new().unwrap();
+
+    let mut time_receiver = clock.spawn_receiver();
+
+    let safe_time_error = time_receiver.safe_time();
+    let wait_for_tick_error = time_receiver.wait_for_tick();
+    let wait_for_time_error = time_receiver.wait_for_time(5);
+    let wait_for_x_ticks_error = time_receiver.wait_for_x_ticks(5);
+
+    assert!(safe_time_error.is_err());
+    assert!(wait_for_tick_error.is_err());
+    assert!(wait_for_time_error.is_err());
+    assert!(wait_for_x_ticks_error.is_err());
+  }
+
+  #[test]
+  fn time_has_already_occurred_error() {
+    let mut clock = Clock::custom(1).unwrap();
+    clock.start();
+
+    let mut time_receiver = clock.spawn_receiver();
+
+    let wait_x_ticks = time_receiver.wait_for_x_ticks(5);
+    let wait_for_time_error = time_receiver.wait_for_time(3);
+
+    assert!(wait_x_ticks.is_ok());
+    assert!(wait_for_time_error.is_err());
   }
 }
