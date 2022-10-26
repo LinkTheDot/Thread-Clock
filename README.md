@@ -1,7 +1,7 @@
-# Rust Clock
+# Thread Clock
 
 
-Rust Clock will allow you to create a clock which can give the
+Thread Clock will allow you to create a clock which can give the
 amount of ticks that have passed since it has started.
 
 The purpose of this clock is to allow synchronization of actions
@@ -14,7 +14,7 @@ every tick has approximately a +1.4ms drift.
 ### Using clock for time
 
 ```rust
-use rust_clock::Clock;
+use thread_clock::Clock;
 
 fn main() {
   let mut clock = Clock::new().unwrap();
@@ -32,7 +32,7 @@ fn main() {
 ### Using clock for thread synching
 
 ```rust
-use rust_clock::Clock;
+use thread_clock::Clock;
 use std::thread;
 
 fn main() {
