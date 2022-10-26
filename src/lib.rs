@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 use tokio::sync::{
   broadcast,
@@ -24,16 +24,11 @@ pub type Time = u64;
 /// The time receiver can do anything the clock can except starting, stopping, and creating time
 /// receivers.
 ///
-/// Make sure no remaining time receivers make any calls after the clock has been stopped. This
-/// will cause the thread they're in to be blocked.
-///
 /// # Creation
 /// ```
 ///use thread_clock::Clock;
-///use std::thread;
 ///
 ///let mut clock = Clock::new().unwrap();
-///
 ///clock.start();
 ///
 ///let mut time_receiver = clock.spawn_receiver();
@@ -47,10 +42,16 @@ pub type Time = u64;
 pub struct TimeReceiver {
   runtime: Arc<Runtime>,
   time_receiver: Receiver<Time>,
+  clock_is_active: Arc<Mutex<bool>>,
 }
 
 impl TimeReceiver {
   ///Waits for the next tick and returns the time.
+  ///
+  ///If any problems arise when this is called the clock will panic.
+  ///
+  ///Use this if you don't want to deal with unwrapping every time you get the time.
+  ///Otherwise use [`safe_time()`](crate::TimeReceiver::safe_time()) for error handling.
   ///
   ///# Example
   ///
@@ -67,10 +68,10 @@ impl TimeReceiver {
   ///assert_eq!(time, 0);
   ///```
   pub fn time(&mut self) -> Time {
-    Clock::get_time(&self.runtime, &mut self.time_receiver)
+    Clock::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active).unwrap()
   }
 
-  ///Waits for the next tick.
+  ///A way to get the time with error handling instead of panicking
   ///
   ///# Example
   ///
@@ -82,17 +83,45 @@ impl TimeReceiver {
   ///
   ///let mut time_receiver = clock.spawn_receiver();
   ///
-  ///time_receiver.wait_for_tick();
+  ///let time = time_receiver.safe_time().unwrap_or_else(|error| panic!("error: {error}"));
+  ///
+  ///assert_eq!(time, 0);
+  ///```
+  pub fn safe_time(&mut self) -> anyhow::Result<Time> {
+    Clock::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active)
+  }
+
+  ///Waits for the next tick.
+  ///
+  ///An error is returned if something went wrong.
+  ///
+  ///# Example
+  ///
+  ///```
+  ///use thread_clock::Clock;
+  ///
+  ///let mut clock = Clock::new().unwrap();
+  ///clock.start();
+  ///
+  ///let mut time_receiver = clock.spawn_receiver();
+  ///
+  ///time_receiver.wait_for_tick().unwrap_or_else(|error| panic!("{error}"));
   ///
   ///let time = time_receiver.time();
   ///
   ///assert_eq!(time, 1);
   ///```
-  pub fn wait_for_tick(&mut self) {
-    Clock::get_time(&self.runtime, &mut self.time_receiver);
+  pub fn wait_for_tick(&mut self) -> anyhow::Result<()> {
+    if let Err(error) = Clock::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active) {
+      Err(error)
+    } else {
+      Ok(())
+    }
   }
 
   ///Waits for the input amount of ticks.
+  ///
+  ///An error is returned if something went wrong.
   ///
   ///# Example
   ///
@@ -104,19 +133,20 @@ impl TimeReceiver {
   ///
   ///let mut time_receiver = clock.spawn_receiver();
   ///
-  ///time_receiver.wait_for_x_ticks(5);
+  ///time_receiver.wait_for_x_ticks(5).unwrap_or_else(|error| panic!("{error}"));
   ///
   ///let time = time_receiver.time();
   ///
   ///assert_eq!(time, 5);
   ///```
-  pub fn wait_for_x_ticks(&mut self, x: u32) {
-    Clock::wait_for_ticks(&self.runtime, &mut self.time_receiver, x);
+  pub fn wait_for_x_ticks(&mut self, x: u32) -> anyhow::Result<()> {
+    Clock::wait_for_ticks(&self.runtime, &mut self.time_receiver, &self.clock_is_active, x)
   }
 
   ///Waits until the imput time.
   ///
-  ///If the time has already occurred then nothing will happen.
+  ///An error is returned if something went wrong.
+  ///Such as if the time has already occurred.
   ///
   ///# Example
   ///
@@ -128,23 +158,22 @@ impl TimeReceiver {
   ///
   ///let mut time_receiver = clock.spawn_receiver();
   ///
-  ///time_receiver.wait_for_time(9);
+  ///time_receiver.wait_for_time(9).unwrap_or_else(|error| panic!("{error}"));
   ///
   ///let time = time_receiver.time();
   ///
   ///assert_eq!(time, 10);
   ///```
-  pub fn wait_for_time(&mut self, time: Time) {
-    Clock::wait_until(&self.runtime, &mut self.time_receiver, time);
+  pub fn wait_for_time(&mut self, time: Time) -> anyhow::Result<()> {
+    Clock::wait_until(&self.runtime, &mut self.time_receiver, &self.clock_is_active, time)
   }
 }
 
 #[derive(Debug)]
 ///The clock can be started, stopped, and receive the current time.
 ///
-///Using the clock is as simple as starting it and calling clock.time().
-///
-///Do not try using the clock before starting it as this will block the current thread it's in.
+///Using the clock is as simple as starting it with [`clock.start()`](crate::Clock::start())
+///and calling [`clock.time()`](crate::Clock::time()) to get the time.
 ///
 ///# Usage
 ///
@@ -167,6 +196,7 @@ pub struct Clock {
   clock_stopper: Option<OneSender<()>>,
   time_receiver: Receiver<Time>,
   clock_sender: Sender<Time>,
+  clock_is_active: Arc<Mutex<bool>>,
   tick_rate: u32,
 }
 
@@ -207,6 +237,7 @@ impl Clock {
     let clock_handle = None;
     let clock_stopper = None;
     let (clock_sender, time_receiver) = broadcast::channel::<Time>(1);
+    let clock_is_active = Arc::new(Mutex::new(false));
     let tick_rate = match tick_rate {
       Some(tick_rate) => tick_rate,
       None => DEFAULT_TICKRATE,
@@ -218,6 +249,7 @@ impl Clock {
       clock_stopper,
       time_receiver,
       clock_sender,
+      clock_is_active,
       tick_rate,
     })
   }
@@ -233,11 +265,15 @@ impl Clock {
   ///clock.start();
   ///```
   pub fn start(&mut self) {
-    let (clock_stopper, stopper_receiver) = oneshot::channel();
-    let handle = self.create_clock_thread(stopper_receiver);
+    if self.clock_handle.is_none() && self.clock_stopper.is_none() {
+      let (clock_stopper, stopper_receiver) = oneshot::channel();
+      let handle = self.create_clock_thread(stopper_receiver);
+      let mut clock_is_active = self.clock_is_active.lock().unwrap();
 
-    self.clock_handle = Some(handle);
-    self.clock_stopper = Some(clock_stopper);
+      self.clock_handle = Some(handle);
+      self.clock_stopper = Some(clock_stopper);
+      *clock_is_active = true;
+    }
   }
 
   ///Stops the clock and returns the final time.
@@ -258,11 +294,13 @@ impl Clock {
   pub fn stop(mut self) -> anyhow::Result<Time> {
     match self.clock_stopper {
       Some(clock_stopper) => {
-        let time = Self::get_time(&self.runtime, &mut self.time_receiver);
+        let time = Self::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active);
+        let mut clock_is_active = self.clock_is_active.lock().unwrap();
 
+        *clock_is_active = false;
         let _ = clock_stopper.send(());
 
-        Ok(time)
+        time
       }
 
       None => Err(anyhow!("The clock hasn't started.")),
@@ -270,6 +308,11 @@ impl Clock {
   }
 
   ///Waits for the next tick and returns the time.
+  ///
+  ///If any problems arise when this is called the clock will panic.
+  ///
+  ///Use this if you don't want to deal with unwrapping every time you get the time.
+  ///Otherwise use [`safe_time()`](crate::Clock::safe_time()) for error handling.
   ///
   ///# Example
   ///
@@ -284,10 +327,10 @@ impl Clock {
   ///assert_eq!(time, 0);
   ///```
   pub fn time(&mut self) -> Time {
-    Self::get_time(&self.runtime, &mut self.time_receiver)
+    Self::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active).unwrap()
   }
 
-  ///Waits for the next tick.
+  ///A way to get the time with error handling instead of panicking
   ///
   ///# Example
   ///
@@ -297,17 +340,43 @@ impl Clock {
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
   ///
-  ///clock.wait_for_tick();
+  ///let time = clock.safe_time().unwrap_or_else(|error| panic!("error: {error}"));
+  ///
+  ///assert_eq!(time, 0);
+  ///```
+  pub fn safe_time(&mut self) -> anyhow::Result<Time> {
+    Self::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active)
+  }
+
+  ///Waits for the next tick.
+  ///
+  ///An error is returned if something went wrong.
+  ///
+  ///# Example
+  ///
+  ///```
+  ///use thread_clock::Clock;
+  ///
+  ///let mut clock = Clock::new().unwrap();
+  ///clock.start();
+  ///
+  ///clock.wait_for_tick().unwrap_or_else(|error| panic!("{error}"));
   ///
   ///let time = clock.time();
   ///
   ///assert_eq!(time, 1);
   ///```
-  pub fn wait_for_tick(&mut self) {
-    Self::get_time(&self.runtime, &mut self.time_receiver);
+  pub fn wait_for_tick(&mut self) -> anyhow::Result<()> {
+    if let Err(error) = Clock::get_time(&self.runtime, &mut self.time_receiver, &self.clock_is_active) {
+      Err(error)
+    } else {
+      Ok(())
+    }
   }
 
   ///Waits for the input amount of ticks.
+  ///
+  ///An error is returned if something went wrong.
   ///
   ///# Example
   ///
@@ -317,19 +386,20 @@ impl Clock {
   ///let mut clock = Clock::new().unwrap();
   ///clock.start();
   ///
-  ///clock.wait_for_x_ticks(5);
+  ///clock.wait_for_x_ticks(5).unwrap_or_else(|error| panic!("{error}"));
   ///
   ///let time = clock.time();
   ///
   ///assert_eq!(time, 5);
   ///```
-  pub fn wait_for_x_ticks(&mut self, x: u32) {
-    Self::wait_for_ticks(&self.runtime, &mut self.time_receiver, x);
+  pub fn wait_for_x_ticks(&mut self, x: u32) -> anyhow::Result<()> {
+    Self::wait_for_ticks(&self.runtime, &mut self.time_receiver, &self.clock_is_active, x)
   }
 
   ///Waits until the imput time.
   ///
-  ///If the time has already occurred then nothing will happen.
+  ///An error is returned if something went wrong.
+  ///Such as if the time has already occurred.
   ///
   ///# Example
   ///
@@ -345,18 +415,34 @@ impl Clock {
   ///
   ///assert_eq!(time, 10);
   ///```
-  pub fn wait_for_time(&mut self, time: Time) {
-    Self::wait_until(&self.runtime, &mut self.time_receiver, time);
+  pub fn wait_for_time(&mut self, time: Time) -> anyhow::Result<()> {
+    Self::wait_until(&self.runtime, &mut self.time_receiver, &self.clock_is_active, time)
   }
 
-  ///Creates a [`time receiver`](crate::TimeReceiver) which has every function the clock does except starting,
+  ///Creates a [`time receiver`](crate::TimeReceiver) which has every method the clock does except starting,
   ///stopping, and creating new time receivers.
   ///
   ///The time receiver can be passed into other threads.
+  ///
+  ///# Example
+  ///
+  ///```
+  ///use thread_clock::Clock;
+  ///
+  ///let mut clock = Clock::new().unwrap();
+  ///clock.start();
+  ///
+  ///let mut time_receiver = clock.spawn_receiver();
+  ///
+  ///let time = time_receiver.time();
+  ///
+  ///assert_eq!(time, 0);
+  ///```
   pub fn spawn_receiver(&self) -> TimeReceiver {
     TimeReceiver {
       runtime: Arc::clone(&self.runtime),
       time_receiver: self.clock_sender.subscribe(),
+      clock_is_active: Arc::clone(&self.clock_is_active),
     }
   }
 
@@ -379,34 +465,58 @@ impl Clock {
 
   // shared function split
 
-  fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>) -> Time {
+  fn get_time(runtime: &Runtime, time_receiver: &mut Receiver<Time>, clock_status: &Arc<Mutex<bool>>) -> anyhow::Result<Time> {
+    let lock = clock_status.lock().unwrap();
+
+    if !*lock {
+      return Err(anyhow!("The clock hasn't started yet"));
+    }
+
+    drop(lock);
+
     let channel_was_empty = time_receiver.is_empty();
     let time = runtime.block_on(time_receiver.recv());
 
     if let (Ok(time), true) = (time, channel_was_empty) {
-      time
+      Ok(time)
     } else if !time_receiver.is_empty() {
-      let _ = runtime.block_on(time_receiver.recv()); // clear excess data
+      let _ = runtime.block_on(time_receiver.recv()); // remove old time from channel
 
-      runtime.block_on(time_receiver.recv()).unwrap()
+      Ok(runtime.block_on(time_receiver.recv())?)
     } else {
-      runtime.block_on(time_receiver.recv()).unwrap()
+      Ok(runtime.block_on(time_receiver.recv())?)
     }
   }
 
-  fn wait_for_ticks(runtime: &Runtime, time_receiver: &mut Receiver<Time>, x: u32) {
+  fn wait_for_ticks(
+    runtime: &Runtime,
+    time_receiver: &mut Receiver<Time>,
+    clock_status: &Arc<Mutex<bool>>,
+    x: u32,
+  ) -> anyhow::Result<()> {
     for _ in 0..x {
-      Self::get_time(runtime, time_receiver);
+      Self::get_time(runtime, time_receiver, clock_status)?;
     }
+
+    Ok(())
   }
 
-  fn wait_until(runtime: &Runtime, time_receiver: &mut Receiver<Time>, wait_for_time: Time) {
-    let current_time = Clock::get_time(runtime, time_receiver);
+  fn wait_until(
+    runtime: &Runtime,
+    time_receiver: &mut Receiver<Time>,
+    clock_status: &Arc<Mutex<bool>>,
+    wait_for_time: Time,
+  ) -> anyhow::Result<()> {
+    let current_time = Clock::get_time(runtime, time_receiver, clock_status)?;
 
     if current_time < wait_for_time {
       let time_to_wait = wait_for_time - current_time;
 
-      Self::wait_for_ticks(runtime, time_receiver, time_to_wait as u32);
+      Self::wait_for_ticks(runtime, time_receiver, clock_status, time_to_wait as u32)?;
+    } else {
+      return Err(anyhow!("This time has already occurred"));
     }
+
+    Ok(())
   }
 }
